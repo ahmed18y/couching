@@ -9,13 +9,12 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Safe fetch - each query independent with fallback
   const { data: clients } = await supabase
     .from('clients').select('id, name, email, coaching_focus, status, avatar_color, created_at')
     .eq('coach_id', user.id).order('created_at', { ascending: false })
 
   const { data: sessions } = await supabase
-    .from('sessions').select('id, session_date, title, duration_minutes, mood')
+    .from('sessions').select('id, session_date')
     .eq('coach_id', user.id)
     .gte('session_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
 
@@ -28,31 +27,34 @@ export default async function DashboardPage() {
     .gte('session_date', new Date().toISOString())
     .order('session_date', { ascending: true }).limit(5)
 
-  // Get client names for upcoming sessions separately
   const clientIds = [...new Set((upcomingSessions || []).map(s => s.client_id))]
   const { data: sessionClients } = clientIds.length > 0
     ? await supabase.from('clients').select('id, name, avatar_color').in('id', clientIds)
     : { data: [] }
 
   const safeClients = clients || []
-  const safeSessions = sessions || []
   const safeGoals = goals || []
   const safeUpcoming = upcomingSessions || []
   const safeSessionClients = sessionClients || []
 
   const activeClients = safeClients.filter(c => c.status === 'active').length
-  const sessionsThisWeek = safeSessions.length
+  const sessionsThisWeek = (sessions || []).length
   const activeGoals = safeGoals.filter(g => g.status === 'active').length
 
   const stats = [
-    { label: 'Active Clients',      value: activeClients,    total: safeClients.length, icon: Users,          color: 'var(--accent)', bg: 'var(--accent-dim)',  href: '/clients'  },
-    { label: 'Sessions This Week',  value: sessionsThisWeek, icon: Calendar,            color: 'var(--indigo)', bg: 'var(--indigo-dim)', href: '/sessions' },
-    { label: 'Active Goals',        value: activeGoals,      icon: Target,              color: 'var(--amber)',  bg: 'var(--amber-dim)',  href: '/goals'    },
-    { label: 'Total Clients',       value: safeClients.length, icon: MessageSquare,     color: 'var(--rose)',   bg: 'var(--rose-dim)',   href: '/clients'  },
+    { label: 'Active Clients',     value: activeClients,     total: safeClients.length, icon: Users,          color: 'var(--accent)',  bg: 'var(--accent-dim)',  href: '/clients'  },
+    { label: 'Sessions This Week', value: sessionsThisWeek,  icon: Calendar,            color: 'var(--indigo)', bg: 'var(--indigo-dim)', href: '/sessions' },
+    { label: 'Active Goals',       value: activeGoals,       icon: Target,              color: 'var(--amber)',  bg: 'var(--amber-dim)',  href: '/goals'    },
+    { label: 'Total Clients',      value: safeClients.length, icon: MessageSquare,      color: 'var(--rose)',   bg: 'var(--rose-dim)',   href: '/clients'  },
   ]
 
   return (
     <div className="page-content fade-in">
+      <style>{`
+        .stat-link:hover .stat-card { transform: translateY(-2px); border-color: rgba(255,255,255,0.12); }
+        .client-row:hover { background: rgba(255,255,255,0.04); }
+      `}</style>
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
@@ -69,8 +71,8 @@ export default async function DashboardPage() {
       {/* Stats Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
         {stats.map((stat) => (
-          <Link key={stat.label} href={stat.href} style={{ textDecoration: 'none' }}>
-            <div className="stat-card" style={{ cursor: 'pointer' }}>
+          <Link key={stat.label} href={stat.href} style={{ textDecoration: 'none' }} className="stat-link">
+            <div className="stat-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '10px' }}>
@@ -104,18 +106,15 @@ export default async function DashboardPage() {
             </Link>
           </div>
           {safeClients.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {safeClients.slice(0, 5).map((client) => (
                 <Link key={client.id} href={`/clients/${client.id}`} style={{ textDecoration: 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', borderRadius: '8px', transition: 'background 0.15s', cursor: 'pointer' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = '')}
-                  >
+                  <div className="client-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', borderRadius: '8px', cursor: 'pointer' }}>
                     <div className="avatar" style={{ background: (client.avatar_color || '#34d399') + '22', color: client.avatar_color || '#34d399' }}>
                       {client.name.charAt(0).toUpperCase()}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: '14px', fontWeight: '600', marginBottom: '2px' }}>{client.name}</p>
+                      <p style={{ fontSize: '14px', fontWeight: '600', marginBottom: '2px', color: 'var(--text-primary)' }}>{client.name}</p>
                       <p style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {client.coaching_focus || client.email || 'No focus set'}
                       </p>
@@ -152,7 +151,7 @@ export default async function DashboardPage() {
                 const client = safeSessionClients.find(c => c.id === session.client_id)
                 return (
                   <div key={session.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px', borderRadius: '8px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
-                    <div style={{ minWidth: '50px', textAlign: 'center', padding: '6px', borderRadius: '8px', background: 'var(--accent-dim)' }}>
+                    <div style={{ minWidth: '50px', textAlign: 'center', padding: '6px', borderRadius: '8px', background: 'var(--accent-dim)', flexShrink: 0 }}>
                       <div style={{ fontSize: '10px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase' }}>
                         {format(new Date(session.session_date), 'MMM')}
                       </div>
